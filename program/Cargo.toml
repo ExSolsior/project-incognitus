@@ -1,0 +1,12 @@
+[package]
+name = "project-incognitus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = { workspace = true }
+pinocchio = { workspace = true }
+# my-lib = { path = "../lib" }
+
+[dev-dependencies]
+mollusk-svm = { workspace = true }

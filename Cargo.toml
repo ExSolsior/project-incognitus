@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "program",
+    "lib",
+]
+resolver = "2"
+
+[workspace.dependencies]
+bytemuck = "1.25.0"
+pinocchio = "0.10.2"
+mollusk-svm = "0.12.0"
