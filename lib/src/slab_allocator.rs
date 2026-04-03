@@ -54,7 +54,7 @@ impl SlabAllocator {
         Header::from_bytes(raw.try_into().unwrap()).allocator_size() as usize
     }
 
-    // ── typed region accessors ────────────────────────────────────────────────
+    /* ── typed region accessors ──────────────────────────────────────────────── */
 
     #[inline(always)]
     fn header(&self) -> &Header {
@@ -115,12 +115,12 @@ impl SlabAllocator {
 
     /* ── getters ─────────────────────────────────────────────────────────────── */
 
-    /* --- setters ---- */
-
     pub fn next_insert_pointer(&mut self) -> u32 {
         let addr = self.header().stack_pointer();
         self.read_addr(addr)
     }
+
+    /* ── setters ─────────────────────────────────────────────────────────────── */
 
     // WIP <<<<-----
     // decrease stack entry
@@ -130,6 +130,7 @@ impl SlabAllocator {
         let addr = self.header().stack_pointer();
         let head_node_addr = (self.alloc_size() - StackNode::SIZE) as u32;
 
+        // bumping the next seq index
         if addr == head_node_addr {
             let next_seq = self.head_node().next_seq_index();
             self.head_node_mut()
@@ -137,44 +138,42 @@ impl SlabAllocator {
             return;
         }
 
+        // next possible stack pointer
         let addr = addr + 4;
 
-        if !self.header().is_fragmented_stack() {
+        // bumping the stack pointer
+        if !self.header().is_fragmented_stack() || !StackNode::at(self.data(), addr).is_tail_node()
+        {
             self.header_mut().set_stack_pointer(addr);
             return;
         }
 
-        let next_dest = self.read_addr(addr);
+        // tail node -> linked node | head node,
+        // TODO: should throw an error if it's not
+        let next_stack_node_ptr = if StackNode::at(self.data(), addr).is_tail_node() {
+            StackNode::at(sefl.data(), addr).next_stack_node_pointer()
+        };
 
-        if next_dest != FULL_FLAG {
-            self.header_mut().set_stack_pointer(addr);
-            return;
-        }
+        let next_stack_node = StackNode::at_mut(self.data(), next_stack_node_ptr);
 
-        let node_addr = addr - StackNode::SIZE as u32;
-        let next_node_ptr = StackNode::at(self.data(), node_addr).next_stack_node_pointer();
-        let next_type = StackNode::at(self.data(), next_node_ptr).stack_node_type_flag();
+        // is tail node or head node
+        // TODO: should throw an error
+        let next_stack_pointer = if next_stack_node.is_linked_node() {
+            // set linked node as tail node
+            let linked_insert_sp = next_stack_node.read_u32(8);
+            next_stack_node.write_u32(8, TYPE_TAIL);
+            linked_insert_sp
+        } else if next_stack_node.is_head_node() {
+            // update head node and flag
+            let head_insert_sp = next_stack_node.read_u32(12);
+            next_stack_node.write_u32(4, head_insert_sp);
+            next_stack_node.write_u32(12, SINGLE_STACK_NODE);
+            self.header_mut().clear_fragmented_stack();
 
-        if next_type != TYPE_HEAD {
-            let linked_insert_sp = StackNode::at(self.data(), next_node_ptr).read_u32(8);
-
-            StackNode::at_mut(self.data_mut(), next_node_ptr).write_u32(8, TYPE_TAIL);
-
-            self.header_mut().set_stack_pointer(linked_insert_sp);
-
-            return;
-        }
-
-        // Next node is HeadNode — stack collapses back to single-node state.
-        // Recover the insert-side stack_pointer that was saved in head-node
-        // at offset 12 when fragmentation began.
-        let head_insert_sp = StackNode::at(self.data(), next_node_ptr).stack_pointer_or_flag();
-
-        self.head_node_mut().write_u32(4, head_insert_sp);
-        self.head_node_mut().write_u32(12, SINGLE_STACK_NODE);
+            head_insert_sp
+        };
 
         self.header_mut().set_stack_pointer(head_insert_sp);
-        self.header_mut().clear_fragmented_stack();
     }
 
     pub fn delete() {}
@@ -339,10 +338,6 @@ impl Header {
     }
 
     // ── derived ───────────────────────────────────────────────────────────────
-
-    /// node_section_start: first multiple of node_size that is >= Header::SIZE.
-    /// There may be a gap of zeroed bytes between the header and the first node
-    /// if node_size does not divide evenly into Header::SIZE.
     pub fn node_section_start(node_size: usize) -> usize {
         let rem = Self::SIZE % node_size;
         if rem == 0 {
