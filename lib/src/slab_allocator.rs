@@ -149,33 +149,36 @@ impl SlabAllocator {
         }
 
         // tail node -> linked node | head node,
-        // TODO: should throw an error if it's not
-        let next_stack_node_ptr = if StackNode::at(self.data(), addr).is_tail_node() {
-            StackNode::at(sefl.data(), addr).next_stack_node_pointer()
-        };
+        let next_stack_node_ptr = StackNode::at(self.data(), addr)
+            .is_tail_node()
+            .then(|| StackNode::at(self.data(), addr).next_stack_node_pointer())
+            .expect("expected tail node");
 
-        let next_stack_node = StackNode::at_mut(self.data(), next_stack_node_ptr);
+        let next_stack_node = StackNode::at_mut(self.data_mut(), next_stack_node_ptr);
 
-        // is tail node or head node
-        // TODO: should throw an error
-        let next_stack_pointer = if next_stack_node.is_linked_node() {
+        // is tail node
+        if next_stack_node.is_linked_node() {
             // set linked node as tail node
             let linked_insert_sp = next_stack_node.read_u32(8);
             next_stack_node.write_u32(8, TYPE_TAIL);
-            linked_insert_sp
-        } else if next_stack_node.is_head_node() {
+            self.header_mut().set_stack_pointer(linked_insert_sp);
+
+            return;
+        };
+
+        // is head node
+        if next_stack_node.is_head_node() {
             // update head node and flag
             let head_insert_sp = next_stack_node.read_u32(12);
             next_stack_node.write_u32(4, head_insert_sp);
             next_stack_node.write_u32(12, SINGLE_STACK_NODE);
             self.header_mut().clear_fragmented_stack();
-
-            head_insert_sp
+            self.header_mut().set_stack_pointer(head_insert_sp);
         };
-
-        self.header_mut().set_stack_pointer(head_insert_sp);
     }
 
+    // this removes a node from the data region and adds
+    // a pointer to that location in the stack
     pub fn delete() {}
 
     pub fn increment_stack() {}
