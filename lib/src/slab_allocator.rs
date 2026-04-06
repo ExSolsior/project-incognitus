@@ -2,17 +2,10 @@
 use bytemuck::{Pod, Zeroable};
 
 pub trait SlabNode {
-    /// Fixed byte size of this node type.
     const SIZE: usize;
-
-    /// Account type discriminator — uniquely identifies this node type.
-    /// Written into the header on initialize, checked on every access.
     const DISCRIMINATOR: u32;
 
-    /// Borrow a node at raw byte address `addr` within the account data.
     fn from_bytes(data: &[u8], addr: u32) -> &Self;
-
-    /// Mutably borrow a node at raw byte address `addr` within the account data.
     fn from_bytes_mut(data: &mut [u8], addr: u32) -> &mut Self;
 }
 
@@ -80,6 +73,11 @@ impl SlabAllocator {
         StackNode::at_mut(self.data_mut(), addr as u32)
     }
 
+    fn head_node_addr(&self) -> u32 {
+        let alloc_size = self.alloc_size();
+        (alloc_size - StackNode::SIZE) as u32
+    }
+
     /* ── address-level read / write ──────────────────────────────────────────── */
 
     #[inline(always)]
@@ -115,18 +113,14 @@ impl SlabAllocator {
 
     /* ── getters ─────────────────────────────────────────────────────────────── */
 
-    pub fn next_insert_pointer(&mut self) -> u32 {
+    pub fn get_next_insert_pointer(&mut self) -> u32 {
         let addr = self.header().stack_pointer();
         self.read_addr(addr)
     }
 
     /* ── setters ─────────────────────────────────────────────────────────────── */
 
-    // WIP <<<<-----
-    // decrease stack entry
-    // increase stack address
-    // update stack
-    pub fn set_next_stack_pointer<N: SlabNode>(&mut self) {
+    pub fn remove_from_stack<N: SlabNode>(&mut self) {
         let addr = self.header().stack_pointer();
         let head_node_addr = (self.alloc_size() - StackNode::SIZE) as u32;
 
@@ -177,11 +171,100 @@ impl SlabAllocator {
         };
     }
 
-    // this removes a node from the data region and adds
-    // a pointer to that location in the stack
-    pub fn delete() {}
+    pub fn add_to_stack(&mut self, node_addr: u32) {
+        let sp = self.header().stack_pointer() - 4;
+        if !self.header().is_fragmented_stack() || self.read_addr(sp) != 0xFFFF_FFFF {
+            self.write_addr(sp, node_addr);
+            self.header_mut().set_stack_pointer(sp);
+            return;
+        }
 
-    pub fn increment_stack() {}
+        let next_stack_node = StackNode::at(self.data(), sp - StackNode::SIZE as u32);
+        let is_linked_node = next_stack_node.is_linked_node();
+        let is_tail_node = next_stack_node.is_tail_node();
+
+        if is_linked_node {
+            let addr = next_stack_node.read_u32(8);
+            let val_1 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_2 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_3 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_4 = self.read_addr(addr);
+
+            let next_stack_node = StackNode::at_mut(self.data_mut(), sp - StackNode::SIZE as u32);
+
+            next_stack_node.write_u32(0, val_1);
+            next_stack_node.write_u32(4, val_2);
+            next_stack_node.write_u32(8, val_3);
+            next_stack_node.write_u32(12, val_4);
+
+            self.head_node_mut().write_u32(12, addr);
+        }
+
+        if is_tail_node {
+            let addr = self.head_node().read_u32(12);
+            let val_1 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_2 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_3 = self.read_addr(addr);
+
+            let addr = addr + 4;
+            let val_4 = self.read_addr(addr);
+
+            let next_stack_node = StackNode::at_mut(self.data_mut(), sp - StackNode::SIZE as u32);
+
+            next_stack_node.write_u32(0, val_1);
+            next_stack_node.write_u32(4, val_2);
+            next_stack_node.write_u32(8, val_3);
+            next_stack_node.write_u32(12, val_4);
+
+            // self.head_node_mut().write_u32(8, 0x0000_0000);
+            self.head_node_mut().write_u32(12, 0x0000_0000);
+
+            let sp = addr + 4;
+            self.head_node_mut().write_u32(4, sp);
+            self.header_mut().set_stack_pointer(sp);
+            self.header_mut().clear_fragmented_stack();
+        }
+    }
+
+    pub fn swap(&mut self) {
+        if self.header().is_fragmented_stack() {
+            return;
+        }
+
+        let sp = self.head_node().read_u32(4);
+        let stack_entry = self.read_addr(sp);
+        let next_seq_index = self.head_node().read_u32(0);
+
+        if stack_entry == next_seq_index {
+            return;
+        }
+
+        // swap
+        if stack_entry > next_seq_index {
+            self.head_node_mut().write_u32(0, stack_entry);
+            self.write_addr(sp, next_seq_index);
+        }
+
+        let sp = sp + 4;
+
+        if sp == self.head_node_addr() {
+            let sp = self.header().stack_pointer();
+            self.head_node_mut().write_u32(4, sp);
+            return;
+        }
+
+        self.head_node_mut().write_u32(4, sp);
+    }
 }
 
 pub type NodePointer = u32;
