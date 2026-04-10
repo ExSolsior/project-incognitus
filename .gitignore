@@ -3,3 +3,5 @@ md/
 CLAUDE.md
 skills-lock.json
 .agents/
+.claude/
+.codex
