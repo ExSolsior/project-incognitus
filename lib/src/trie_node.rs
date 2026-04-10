@@ -58,6 +58,15 @@ impl TrieNode {
     pub fn trie_link_mut(&mut self) -> &mut TrieLink {
         unsafe { &mut *(self.0[17..].as_mut_ptr() as *mut TrieLink) }
     }
+
+    pub fn update_deltas(&mut self, quantity_delta: i64, quote_delta: i64) {
+        let new_q = (self.quantity_delta() as i128 + quantity_delta as i128) as u64;
+        let new_v = (self.quote_delta() as i128 + quote_delta as i128) as u64;
+        self.set_quantity_delta(new_q);
+        self.set_quote_delta(new_v);
+    }
+
+    // TODO: Implement Price Calculation helper to reconstruct full price or validate digits at depth.
 }
 
 /*
@@ -142,6 +151,12 @@ impl TrieLink {
         self.set_flags(flags)
     }
 
+    pub fn set_price_node(&mut self, ptr: PriceNodePointer) {
+        self.set_size(0);
+        self.set_pointer(ptr.address());
+        self.set_as_price_node_ptr();
+    }
+
     /* --- digit bitmask (bits 0–9) --- */
 
     pub fn has_child_digit(&self, digit: u8) -> bool {
@@ -173,6 +188,8 @@ impl TrieLink {
     }
 
     /* --- activity (bit 14) --- */
+
+    // TODO: Implement is_active propagation logic during traversal.
 
     pub fn is_active(&self) -> bool {
         self.flags() & IS_ACTIVE_FLAG != 0
@@ -524,4 +541,6 @@ impl TrieLink {
             }
         }
     }
+
+    // TODO: Implement Child Iterator for side-aware traversal (Ask: 0->9, Bid: 9->0).
 }
