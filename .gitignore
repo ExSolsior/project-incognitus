@@ -1,1 +1,5 @@
 /target
+md/
+CLAUDE.md
+skills-lock.json
+.agents/

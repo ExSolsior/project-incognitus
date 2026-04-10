@@ -191,160 +191,337 @@ impl TrieLink {
         &mut self,
         side: Side,
         digit: u8,
-        insert_ptr: TrieNodePointer,
+        mut insert_ptr: TrieNodePointer,
         slab: &mut SlabAllocator<TrieLinkNode>,
     ) {
-        // size = self.size()
-        //
-        //
-        // index = if side.is_ask()
-        //      index = 0
-        //      num = 0
-        //      loop
-        //          if num == digit
-        //              break
-        //
-        //          mask = 0x0000_00001 << num
-        //          if self.flags() & mask != 0
-        //              index += 1
-        //
-        //          num += 1
-        //
-        // else if side.is_bid()
-        //      index = 0
-        //      num = 9
-        //      loop
-        //          if num == digit
-        //              break
-        //
-        //          mask = 0x0000_00001 << num
-        //          if self.flags() & mask != 0
-        //              index += 1
-        //
-        //          num -= 1
-        //
-        // else
-        //      !unreachable()
-        //
-        //
-        // if size == 0
-        //      self.set_pointer(insert_ptr)
-        //      self.set_size(size + 1)
-        //      mask = 0x0000_0001 << index
-        //      self.set_flag(self.flag() | mask)
-        //      self.set_flag_as_trie_node_ptr()
-        //      return
-        //
-        //
-        // (new_link_node_ptr) = if size == 1 || size == 4 || size == 7
-        //          new_link_node_ptr = slab.next_insert()
-        //          slab.remove_from_stack()
-        //          slab.swap()
-        //          new_link_node_ptr
-        //      else
-        //          0x0000_0000
-        //
-        //
-        // if self.pointer().is_trie_node_ptr()
-        //          swap_ptr = self.pointer().address()
-        //          self.set_link_pointer(new_link_node_ptr)
-        //          node = slab.get_node(new_link_node_ptr)
-        //
-        //          if index == 0
-        //              node.set_pointer(0, insert_ptr)
-        //              node.set_pointer(1, swap_ptr)
-        //          if index == 1
-        //              node.set_pointer(0, swap_ptr)
-        //              node.set_pointer(1, insert_ptr)
-        //
-        //          self.set_size(size + 1)
-        //          mask = 0x0000_0001 << index
-        //          self.set_flag(self.flag() | mask)
-        //          self.set_flag_as_trie_link_node_ptr()
-        //          return
-        //
-        //
-        // if (size == 4 || size == 7) && self.pointer().is_trie_link_node_ptr()
-        //          link_node_ptr = self.pointer().address()
-        //
-        //          loop
-        //              node = slab.get_node(link_node_ptr)
-        //              ptr = node.get_pointer(3)
-        //
-        //              if ptr.is_trie_link_node_ptr()
-        //                  link_node_ptr = ptr.address()
-        //                  continue
-        //
-        //              link_node_ptr = ptr.address()
-        //              node = slab.get_node(link_node_ptr)
-        //              swap_ptr = node.get_pointer(3).address()
-        //              node.set_pointer(3, new_link_node_ptr)
-        //
-        //              node = slab.get_node(new_link_node_ptr)
-        //              node.set_pointer(0, swap_ptr)
-        //
-        //              break
-        //
-        // -- traverse, swap, insert
-        //
-        //      swap_ptr = 0
-        //
-        //      local = if ((index == 3 && size == 3) || (index == 6 && size == 6) || (index == 9 && size == 9))
-        //          3
-        //      else
-        //          index % 3
-        //
-        //      start_node_idx = if index > 6 && size >= 7
-        //          2
-        //      else if index > 3 && size >= 4
-        //          1
-        //      else
-        //          0
-        //
-        //      end_node_idx = if size >= 7
-        //          2
-        //      else if size >= 4
-        //          1
-        //      else
-        //          0
-        //
-        //      link_node_ptr = self.pointer().address()
-        //      idx = 0
-        //
-        //      // performs swap and insert
-        //      loop !(idx <= end_node_idx)
-        //          if link_node_ptr == 0x0000_0000
-        //              break
-        //
-        //
-        //          node = slab.get_node(link_node_ptr)
-        //          if !(idx >= start_node_idx)
-        //              link_node_ptr = node.get_pointer(3).address()
-        //              continue
-        //
-        //
-        //          distance = if size % 3 == 0 && start_node == end_node
-        //              4 - local
-        //          else
-        //              3 - local + 1
-        //
-        //
-        //          count = 0
-        //          loop !(count > distance)
-        //              swap_ptr = node.get_pointer(local)
-        //              node.set_pointer(local, insert_ptr)
-        //              insert_ptr = swap_ptr
-        //              local += 1
-        //              count += 1
-        //
-        //
-        //          link_node_ptr = node.get_pointer(3).address()
-        //          local = 0
-        //          idx += 1
-        //
-        //
-        //  self.set_size(size + 1)
-        //  mask = 0x0000_0001 << index
-        //  self.set_flag(self.flag() | mask)
+        let size = self.size();
+
+        // 1. Calculate the insertion index to maintain price priority.
+        let mut index = 0;
+        match side {
+            Side::Ask => {
+                for i in 0..10 {
+                    if i == digit { break; }
+                    if self.has_child_digit(i) { index += 1; }
+                }
+            }
+            Side::Bid => {
+                for i in (0..10).rev() {
+                    if i == digit { break; }
+                    if self.has_child_digit(i) { index += 1; }
+                }
+            }
+        }
+
+        // 2. Case: Empty TrieLink (size 0).
+        if size == 0 {
+            self.set_pointer(insert_ptr.address());
+            self.set_size(1);
+            self.set_child_digit(digit);
+            let flags = (self.flags() & !TRIE_LINK_NODE_PTR_FLAG) | TRIE_NODE_PTR_FLAG;
+            self.set_flags(flags);
+            return;
+        }
+
+        // 3. Expansion check (at size 1, 4, 7).
+        let new_link_node_ptr = match size {
+            1 | 4 | 7 => {
+                let ptr = slab.next_insert();
+                slab.remove_from_stack();
+                slab.swap();
+                ptr
+            }
+            _ => 0,
+        };
+
+        // 4. Case: Transition from single pointer to a chain (size 1 -> 2).
+        if self.is_trie_node_ptr() {
+            let swap_ptr = self.pointer().address();
+            self.set_pointer(new_link_node_ptr);
+            let node = slab.get_node(new_link_node_ptr);
+
+            match index {
+                0 => {
+                    node.set(0, insert_ptr.address());
+                    node.set(1, swap_ptr);
+                }
+                _ => {
+                    node.set(0, swap_ptr);
+                    node.set(1, insert_ptr.address());
+                }
+            }
+
+            self.set_size(size + 1);
+            self.set_child_digit(digit);
+            let flags = (self.flags() & !TRIE_NODE_PTR_FLAG) | TRIE_LINK_NODE_PTR_FLAG;
+            self.set_flags(flags);
+            return;
+        }
+
+        // 5. Expand the chain if adding a 5th or 8th child.
+        if matches!(size, 4 | 7) && self.is_trie_link_node_ptr() {
+            let mut current_ptr = self.pointer().address();
+            loop {
+                let node = slab.get_node(current_ptr);
+                let next = node.next_link_ptr();
+
+                if next.is_trie_link_node() {
+                    current_ptr = next.address();
+                    continue;
+                }
+
+                let swap_ptr = next.address();
+                node.set(3, TrieLinkNodePointer::from_link(new_link_node_ptr).0);
+
+                let next_node = slab.get_node(new_link_node_ptr);
+                next_node.set(0, swap_ptr);
+                break;
+            }
+        }
+
+        // 6. Traverse, Shift, and Insert.
+        let mut node_idx = 0;
+        let start_node_idx = match index {
+            i if i > 6 && size >= 7 => 2,
+            i if i > 3 && size >= 4 => 1,
+            _ => 0,
+        };
+
+        let end_node_idx = match size {
+            s if s >= 7 => 2,
+            s if s >= 4 => 1,
+            _ => 0,
+        };
+
+        let mut local = match (index, size) {
+            (3, 3) | (6, 6) | (9, 9) => 3,
+            _ => (index % 3) as usize,
+        };
+
+        let mut current_link_ptr = self.pointer().address();
+        
+        while node_idx <= end_node_idx {
+            if current_link_ptr == 0 { break; }
+            let node = slab.get_node(current_link_ptr);
+
+            if node_idx < start_node_idx {
+                current_link_ptr = node.next_link_ptr().address();
+                node_idx += 1;
+                continue;
+            }
+
+            let is_last_node = node_idx == end_node_idx;
+            let distance = match (size % 3 == 0, is_last_node) {
+                (true, true) => 4 - local,
+                _ => 3 - local,
+            };
+
+            for _ in 0..distance {
+                let current_val = node.pointer(local).address();
+                let val_to_set = if local == 3 {
+                    TrieLinkNodePointer::from_node(insert_ptr.address()).0
+                } else {
+                    insert_ptr.address()
+                };
+                node.set(local, val_to_set);
+                insert_ptr = TrieNodePointer::from(current_val);
+                local += 1;
+            }
+
+            current_link_ptr = node.next_link_ptr().address();
+            local = 0;
+            node_idx += 1;
+        }
+
+        self.set_size(size + 1);
+        self.set_child_digit(digit);
+    }
+
+    pub fn remove(&mut self, side: Side, digit: u8, slab: &mut SlabAllocator<TrieLinkNode>) {
+        let size = self.size();
+        if size == 0 { return; }
+
+        let mut index = 0;
+        match side {
+            Side::Ask => {
+                for i in 0..digit {
+                    if self.has_child_digit(i) { index += 1; }
+                }
+            }
+            Side::Bid => {
+                for i in (digit + 1..10).rev() {
+                    if self.has_child_digit(i) { index += 1; }
+                }
+            }
+        }
+
+        if size == 1 {
+            self.set_pointer(0);
+            self.set_size(0);
+            self.clear_child_digit(digit);
+            let flags = self.flags() & !(TRIE_NODE_PTR_FLAG | TRIE_LINK_NODE_PTR_FLAG);
+            self.set_flags(flags);
+            return;
+        }
+
+        let mut node_idx = 0;
+        let start_node_idx = match index {
+            i if i >= 7 => 2,
+            i if i >= 4 => 1,
+            _ => 0,
+        };
+        let end_node_idx = match size {
+            s if s > 7 => 2,
+            s if s > 4 => 1,
+            _ => 0,
+        };
+
+        let mut current_link_ptr = self.pointer().address();
+        let mut local = (index % 3) as usize;
+        if index == 3 || index == 6 || index == 9 { local = 3; }
+
+        while node_idx <= end_node_idx {
+            let node = slab.get_node(current_link_ptr);
+            if node_idx < start_node_idx {
+                current_link_ptr = node.next_link_ptr().address();
+                node_idx += 1;
+                continue;
+            }
+
+            let mut cursor = local;
+            loop {
+                let next_idx = cursor + 1;
+                let next_val = if next_idx <= 3 {
+                    let ptr = node.pointer(next_idx);
+                    if ptr.is_trie_link_node() {
+                        let next_node = slab.get_node(ptr.address());
+                        next_node.pointer(0).address()
+                    } else {
+                        ptr.address()
+                    }
+                } else {
+                    break;
+                };
+
+                let val_to_set = if cursor == 3 {
+                    TrieLinkNodePointer::from_node(next_val).0
+                } else {
+                    next_val
+                };
+                node.set(cursor, val_to_set);
+                cursor += 1;
+                if cursor > 3 { break; }
+            }
+
+            current_link_ptr = node.next_link_ptr().address();
+            if current_link_ptr == 0 { break; }
+            local = 0;
+            node_idx += 1;
+        }
+
+        match size {
+            2 => {
+                let link_node_ptr = self.pointer().address();
+                let node = slab.get_node(link_node_ptr);
+                let remaining_ptr = node.pointer(0).address();
+
+                self.set_pointer(remaining_ptr);
+                let flags = (self.flags() & !TRIE_LINK_NODE_PTR_FLAG) | TRIE_NODE_PTR_FLAG;
+                self.set_flags(flags);
+            }
+            5 | 8 => {
+                let mut current_ptr = self.pointer().address();
+                loop {
+                    let node = slab.get_node(current_ptr);
+                    let next = node.next_link_ptr();
+                    if next.is_trie_link_node() {
+                        let next_node = slab.get_node(next.address());
+                        if next_node.next_link_ptr().address() == 0 {
+                            let last_child_ptr = next_node.pointer(0).address();
+                            node.set(3, TrieLinkNodePointer::from_node(last_child_ptr).0);
+                            break;
+                        }
+                        current_ptr = next.address();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        self.set_size(size - 1);
+        self.clear_child_digit(digit);
+    }
+
+    pub fn get_child(
+        &self,
+        side: Side,
+        digit: u8,
+        slab: &SlabAllocator<TrieLinkNode>,
+    ) -> Option<TrieNodePointer> {
+        if !self.has_child_digit(digit) {
+            return None;
+        }
+
+        let size = self.size();
+        if size == 0 {
+            return None;
+        }
+
+        let mut index = 0;
+        match side {
+            Side::Ask => {
+                for i in 0..digit {
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
+                }
+            }
+            Side::Bid => {
+                for i in (digit + 1..10).rev() {
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
+                }
+            }
+        }
+
+        if size == 1 {
+            return match self.pointer() {
+                Pointer::TrieNode(p) => Some(p),
+                _ => None,
+            };
+        }
+
+        let mut current_link_ptr = self.pointer().address();
+        let mut cursor = index;
+
+        loop {
+            if current_link_ptr == 0 {
+                return None;
+            }
+            let node = slab.get_node(current_link_ptr);
+
+            if cursor < 3 {
+                return match node.pointer(cursor as usize) {
+                    Pointer::TrieNode(p) => Some(p),
+                    _ => None,
+                };
+            }
+
+            let next = node.next_link_ptr();
+            if next.is_trie_link_node() {
+                current_link_ptr = next.address();
+                cursor -= 3;
+            } else if cursor == 3 {
+                return match node.pointer(3) {
+                    Pointer::TrieNode(p) => Some(p),
+                    _ => None,
+                };
+            } else {
+                return None;
+            }
+        }
     }
 }
