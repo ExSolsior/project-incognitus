@@ -218,14 +218,22 @@ impl TrieLink {
         match side {
             Side::Ask => {
                 for i in 0..10 {
-                    if i == digit { break; }
-                    if self.has_child_digit(i) { index += 1; }
+                    if i == digit {
+                        break;
+                    }
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
                 }
             }
             Side::Bid => {
                 for i in (0..10).rev() {
-                    if i == digit { break; }
-                    if self.has_child_digit(i) { index += 1; }
+                    if i == digit {
+                        break;
+                    }
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
                 }
             }
         }
@@ -316,9 +324,11 @@ impl TrieLink {
         };
 
         let mut current_link_ptr = self.pointer().address();
-        
+
         while node_idx <= end_node_idx {
-            if current_link_ptr == 0 { break; }
+            if current_link_ptr == 0 {
+                break;
+            }
             let node = slab.get_node(current_link_ptr);
 
             if node_idx < start_node_idx {
@@ -356,18 +366,24 @@ impl TrieLink {
 
     pub fn remove(&mut self, side: Side, digit: u8, slab: &mut SlabAllocator<TrieLinkNode>) {
         let size = self.size();
-        if size == 0 { return; }
+        if size == 0 {
+            return;
+        }
 
         let mut index = 0;
         match side {
             Side::Ask => {
                 for i in 0..digit {
-                    if self.has_child_digit(i) { index += 1; }
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
                 }
             }
             Side::Bid => {
                 for i in (digit + 1..10).rev() {
-                    if self.has_child_digit(i) { index += 1; }
+                    if self.has_child_digit(i) {
+                        index += 1;
+                    }
                 }
             }
         }
@@ -395,7 +411,9 @@ impl TrieLink {
 
         let mut current_link_ptr = self.pointer().address();
         let mut local = (index % 3) as usize;
-        if index == 3 || index == 6 || index == 9 { local = 3; }
+        if index == 3 || index == 6 || index == 9 {
+            local = 3;
+        }
 
         while node_idx <= end_node_idx {
             let node = slab.get_node(current_link_ptr);
@@ -427,11 +445,15 @@ impl TrieLink {
                 };
                 node.set(cursor, val_to_set);
                 cursor += 1;
-                if cursor > 3 { break; }
+                if cursor > 3 {
+                    break;
+                }
             }
 
             current_link_ptr = node.next_link_ptr().address();
-            if current_link_ptr == 0 { break; }
+            if current_link_ptr == 0 {
+                break;
+            }
             local = 0;
             node_idx += 1;
         }
