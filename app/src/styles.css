@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+body {
+  @apply m-0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0a0e14;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+/* Custom scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #0a0e14;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #1e2530;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #2a3441;
+}
+
+/* Tabular numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Price flash - visible */
+@keyframes flash-green {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(38, 166, 154, 0.15); }
+}
+
+@keyframes flash-red {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(239, 83, 80, 0.15); }
+}
+
+.flash-green {
+  animation: flash-green 0.5s ease-out;
+}
+
+.flash-red {
+  animation: flash-red 0.5s ease-out;
+}
+
+/* Glass effect for tooltips */
+.glass {
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Glow for current price */
+.glow-green {
+  text-shadow: 0 0 20px rgba(38, 166, 154, 0.5);
+}
+
+.glow-red {
+  text-shadow: 0 0 20px rgba(239, 83, 80, 0.5);
+}
