@@ -3,10 +3,22 @@ name = "project-incognitus"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+default = []
+bpf-entrypoint = []
+
 [dependencies]
 bytemuck = { workspace = true }
 pinocchio = { workspace = true }
-# my-lib = { path = "../lib" }
+pinocchio-system = { workspace = true }
 
 [dev-dependencies]
 mollusk-svm = { workspace = true }
+solana-pubkey = { workspace = true }
+solana-account = { workspace = true }
+solana-instruction = { workspace = true }
+solana-program-error = { workspace = true }
+solana-sdk-ids = { workspace = true }
