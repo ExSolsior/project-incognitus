@@ -1,14 +1,19 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#[cfg(feature = "bpf-entrypoint")]
+mod entrypoint {
+    use pinocchio::{entrypoint, AccountView, Address, ProgramResult};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    entrypoint!(process_instruction);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn process_instruction(
+        program_id: &Address,
+        accounts: &mut [AccountView],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        crate::processor::process(program_id, accounts, instruction_data)
     }
 }
+
+pub mod error;
+pub mod instructions;
+pub mod processor;
+pub mod state;
